@@ -187,4 +187,6 @@ def clear_cart():
 st.title("🎟️ PCB Gift Calculator")
 
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
-total_r_cost = sum(item['
+total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
+
+col1, col2, col3 =
