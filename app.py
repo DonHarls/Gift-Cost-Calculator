@@ -189,4 +189,110 @@ st.title("🎟️ PCB Gift Calculator")
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
 total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
 
-col1, col2, col3 =
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.session_state.max_budget = st.number_input(
+        "Max Budget (Company)", 
+        value=st.session_state.max_budget, 
+        step=10.0
+    )
+
+with col2:
+    if raw_m_cost != st.session_state.last_cart_total:
+        new_default = min(raw_m_cost, st.session_state.max_budget)
+        st.session_state.marketer_cost_input = new_default
+        st.session_state.last_cart_total = raw_m_cost
+
+    marketer_pay_input = st.number_input(
+        "Marketer Cost (You Pay)", 
+        key="marketer_cost_input", 
+        step=1.0,
+        help="Type the amount you want to pay. Guest pays the rest."
+    )
+    
+    if raw_m_cost > 0:
+        calculated_guest_pay = raw_m_cost - marketer_pay_input
+        guest_pays = max(75.0, calculated_guest_pay)
+        effective_marketer_pay = raw_m_cost - guest_pays
+    else:
+        guest_pays = 0.0
+        effective_marketer_pay = 0.0
+
+    if effective_marketer_pay < marketer_pay_input:
+        st.caption(f"🔒 Adjusted to **${effective_marketer_pay:,.2f}** (Guest Min $75)")
+    
+    if effective_marketer_pay > st.session_state.max_budget:
+         st.caption(f"⚠️ Over Budget")
+
+with col3:
+    st.metric("Guest Pays", f"${guest_pays:,.2f}")
+    if guest_pays == 75.0 and raw_m_cost > 0:
+        st.caption("🔒 Min. Payment Applied")
+    st.markdown(
+        f"<div style='text-align: right; color: gray; font-size: 0.8em;'>"
+        f"Cart Value: ${raw_m_cost:,.2f}</div>", 
+        unsafe_allow_html=True
+    )
+
+st.divider()
+
+# --- MAIN SELECTION AREA ---
+st.header("Build Package")
+
+category = st.selectbox("Select Category", list(DB.keys()))
+item_name = st.selectbox("Select Attraction/Item", list(DB[category].keys()))
+selected_item = DB[category][item_name]
+
+if selected_item['notes']:
+    st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
+
+# Use a Form, but manage keys manually for stability
+with st.form("add_form", clear_on_submit=False):
+    if item_name == "Restaurant Cards":
+        st.caption("Enter the dollar amount you want to give.")
+
+    # We need to collect the keys of the current inputs so we can reset them manually later
+    current_input_keys = []
+    
+    for variant in selected_item['variants']:
+        c1, c2, c3 = st.columns([3, 2, 2])
+        is_money_type = variant.get('type') == 'money'
+        
+        with c1:
+            st.write(f"**{variant['name']}**")
+        with c2:
+            if is_money_type:
+                pct = int(variant['ratio'] * 100)
+                st.caption(f"Cost: {pct}% of Retail")
+            else:
+                st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
+        with c3:
+            # Stable key based on item+variant
+            # We prefix with "input_" to easily identify them
+            stable_key = f"input_{item_name}_{variant['name']}"
+            current_input_keys.append(stable_key)
+            
+            # Initialize key in session state if missing
+            if stable_key not in st.session_state:
+                st.session_state[stable_key] = 0.0
+
+            if is_money_type:
+                st.number_input(
+                    "Amount ($)", min_value=0.0, step=0.01, 
+                    key=stable_key, label_visibility="collapsed"
+                )
+            else:
+                st.number_input(
+                    "Qty", min_value=0.0, step=1.0, 
+                    key=stable_key, label_visibility="collapsed"
+                )
+
+    submitted = st.form_submit_button("Add to Cart", type="primary")
+
+    if submitted:
+        any_added = False
+        # Iterate through the variants and read from Session State directly
+        for variant in selected_item['variants']:
+            stable_key = f"input_{item_name}_{variant['name']}"
+            val
