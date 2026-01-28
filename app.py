@@ -187,23 +187,4 @@ def clear_cart():
 st.title("🎟️ PCB Gift Calculator")
 
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
-total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.session_state.max_budget = st.number_input(
-        "Max Budget (Company)", 
-        value=st.session_state.max_budget, 
-        step=10.0
-    )
-
-with col2:
-    if raw_m_cost != st.session_state.last_cart_total:
-        new_default = min(raw_m_cost, st.session_state.max_budget)
-        st.session_state.marketer_cost_input = new_default
-        st.session_state.last_cart_total = raw_m_cost
-
-    marketer_pay_input = st.number_input(
-        "Marketer Cost (You Pay)", 
-        key="marketer_cost
+total_r_cost = sum(item['
