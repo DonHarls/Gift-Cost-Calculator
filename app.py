@@ -116,3 +116,241 @@ DB = {
                 {"name": "Dave & Buster's", "type": "money", "ratio": 0.5},
             ]
         },
+        "Margaritaville": {
+            "notes": "Enter total amount. Cost is 50%.",
+            "variants": [
+                {"name": "Gift Card Amount", "type": "money", "ratio": 0.5},
+            ]
+        }
+    },
+    "Vacations & Points": {
+        "Vacation Packages": {
+            "notes": "Major trips and getaways. See restrictions.",
+            "variants": [
+                {"name": "8/7 Resort Stay", "m_cost": 75.00, "r_cost": 1499.00},
+                {"name": "Cruise (3-5 Night)", "m_cost": 75.00, "r_cost": 1550.00},
+                {"name": "Vacation Pass", "m_cost": 0.00, "r_cost": 1098.00},
+                {"name": "Resort Condo (7 Night)", "m_cost": 75.00, "r_cost": 2100.00},
+            ]
+        },
+        "Wyndham Rewards": {
+            "notes": "Good for hotels and resorts. Retail estimated @ $10/1k pts.",
+            "variants": [
+                {"name": "1,000 Points", "m_cost": 5.13, "r_cost": 10.00},
+                {"name": "15,000 Points", "m_cost": 77.00, "r_cost": 150.00},
+                {"name": "30,000 Points", "m_cost": 154.00, "r_cost": 300.00},
+                {"name": "45,000 Points", "m_cost": 231.00, "r_cost": 450.00},
+            ]
+        },
+        "Tango Rewards": {
+            "notes": "No Cash Cards. Max $175 retail cost.",
+            "variants": [
+                {"name": "Tango Link Amount", "type": "money", "ratio": 1.0},
+            ]
+        }
+    }
+}
+
+# --- INITIALIZE SESSION STATE ---
+if 'cart' not in st.session_state:
+    st.session_state.cart = []
+if 'max_budget' not in st.session_state:
+    st.session_state.max_budget = 200.00
+if 'marketer_cost_input' not in st.session_state:
+    st.session_state.marketer_cost_input = 0.0
+if 'last_cart_total' not in st.session_state:
+    st.session_state.last_cart_total = 0.0
+if 'input_id' not in st.session_state:
+    st.session_state.input_id = 0
+
+# --- FUNCTIONS ---
+def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
+    if qty > 0:
+        st.session_state.cart.append({
+            "Item": item_name,
+            "Variant": variant_name,
+            "Marketer Cost": m_cost,
+            "Retail Cost": r_cost,
+            "Qty": qty,
+            "Total M": m_cost * qty,
+            "Total R": r_cost * qty
+        })
+
+def clear_cart():
+    st.session_state.cart = []
+    st.session_state.marketer_cost_input = 0.0
+    st.session_state.last_cart_total = 0.0
+    st.session_state.input_id += 1 # Reset inputs on clear
+
+# --- TOP DASHBOARD (THE MONEY ZONE) ---
+st.title("🎟️ PCB Gift Calculator")
+
+raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
+total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
+
+# Safe column unpacking
+cols = st.columns(3)
+col1, col2, col3 = cols[0], cols[1], cols[2]
+
+with col1:
+    st.session_state.max_budget = st.number_input(
+        "Max Budget (Company)", 
+        value=st.session_state.max_budget, 
+        step=10.0
+    )
+
+with col2:
+    if raw_m_cost != st.session_state.last_cart_total:
+        new_default = min(raw_m_cost, st.session_state.max_budget)
+        st.session_state.marketer_cost_input = new_default
+        st.session_state.last_cart_total = raw_m_cost
+
+    marketer_pay_input = st.number_input(
+        "Marketer Cost (You Pay)", 
+        key="marketer_cost_input", 
+        step=1.0,
+        help="Type the amount you want to pay. Guest pays the rest."
+    )
+    
+    if raw_m_cost > 0:
+        calculated_guest_pay = raw_m_cost - marketer_pay_input
+        guest_pays = max(75.0, calculated_guest_pay)
+        effective_marketer_pay = raw_m_cost - guest_pays
+    else:
+        guest_pays = 0.0
+        effective_marketer_pay = 0.0
+
+    if effective_marketer_pay < marketer_pay_input:
+        st.caption(f"🔒 Adjusted to **${effective_marketer_pay:,.2f}** (Guest Min $75)")
+    
+    if effective_marketer_pay > st.session_state.max_budget:
+         st.caption(f"⚠️ Over Budget")
+
+with col3:
+    st.metric("Guest Pays", f"${guest_pays:,.2f}")
+    if guest_pays == 75.0 and raw_m_cost > 0:
+        st.caption("🔒 Min. Payment Applied")
+    st.markdown(
+        f"<div style='text-align: right; color: gray; font-size: 0.8em;'>"
+        f"Cart Value: ${raw_m_cost:,.2f}</div>", 
+        unsafe_allow_html=True
+    )
+
+st.divider()
+
+# --- MAIN SELECTION AREA ---
+st.header("Build Package")
+
+category = st.selectbox("Select Category", list(DB.keys()))
+item_name = st.selectbox("Select Attraction/Item", list(DB[category].keys()))
+selected_item = DB[category][item_name]
+
+if selected_item['notes']:
+    st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
+
+# ----------------------------------------------------
+# THE FIX: We use 'input_id' in the keys. 
+# When we add to cart, we increase input_id. 
+# This tells Streamlit to destroy the old boxes and make new ones (which default to 0).
+# ----------------------------------------------------
+
+with st.form("add_form", clear_on_submit=False):
+    if item_name == "Restaurant Cards":
+        st.caption("Enter the dollar amount you want to give.")
+
+    # We use this dict to capture the values from the form
+    captured_inputs = {}
+
+    for variant in selected_item['variants']:
+        cols = st.columns([3, 2, 2])
+        c1, c2, c3 = cols[0], cols[1], cols[2]
+        
+        is_money_type = variant.get('type') == 'money'
+        
+        with c1:
+            st.write(f"**{variant['name']}**")
+        with c2:
+            if is_money_type:
+                pct = int(variant['ratio'] * 100)
+                st.caption(f"Cost: {pct}% of Retail")
+            else:
+                st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
+        with c3:
+            # THIS IS THE KEY PART: The key changes every time input_id changes.
+            unique_key = f"{item_name}_{variant['name']}_{st.session_state.input_id}"
+            
+            if is_money_type:
+                captured_inputs[variant['name']] = st.number_input(
+                    "Amount ($)", min_value=0.0, step=0.01, 
+                    key=unique_key, label_visibility="collapsed"
+                )
+            else:
+                captured_inputs[variant['name']] = st.number_input(
+                    "Qty", min_value=0.0, step=1.0, 
+                    key=unique_key, label_visibility="collapsed"
+                )
+
+    submitted = st.form_submit_button("Add to Cart", type="primary")
+
+    if submitted:
+        any_added = False
+        
+        for variant in selected_item['variants']:
+            # Retrieve value from the dictionary we built above
+            val = captured_inputs.get(variant['name'], 0.0)
+            
+            if val > 0:
+                if variant.get('type') == 'money':
+                    calc_m = val * variant['ratio']
+                    display_name = f"{variant['name']} (Val: ${val:.2f})"
+                    add_to_cart(item_name, display_name, calc_m, val, 1)
+                else:
+                    qty_int = int(val)
+                    add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
+                
+                any_added = True
+        
+        if any_added:
+            st.success(f"Added {item_name} to cart!")
+            # Reset the form by changing the ID
+            st.session_state.input_id += 1
+            st.rerun()
+        else:
+            st.warning("Please enter a value greater than 0.")
+
+st.divider()
+
+# --- BOTTOM SUMMARY (THE RECEIPT) ---
+st.header("Current Package")
+
+if len(st.session_state.cart) > 0:
+    for i, item in enumerate(st.session_state.cart):
+        cols = st.columns([5, 2, 1])
+        col1, col2, col3 = cols[0], cols[1], cols[2]
+        
+        with col1:
+            st.write(f"**{item['Item']}**")
+            st.caption(f"{item['Variant']}")
+        with col2:
+            st.write(f"Qty: {item['Qty']}")
+            st.write(f"${item['Total M']:.2f}")
+        with col3:
+            if st.button("🗑️", key=f"remove_{i}"):
+                st.session_state.cart.pop(i)
+                st.rerun()
+        st.divider()
+
+    st.markdown(f"""
+        <div style="background-color: #d4edda; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
+            <h2 style="color: #155724; margin:0;">Total Retail Value: ${total_r_cost:,.2f}</h2>
+            <p style="color: #155724; margin:0;">(Value to Guest)</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.write("") 
+    if st.button("Clear All / New Guest", type="secondary"):
+        clear_cart()
+        st.rerun()
+
+else:
+    st.info("Cart is empty. Select items above to start.")
