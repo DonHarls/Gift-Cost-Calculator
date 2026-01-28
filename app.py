@@ -154,15 +154,16 @@ DB = {
 # --- INITIALIZE SESSION STATE ---
 if 'cart' not in st.session_state:
     st.session_state.cart = []
+# UPDATED: Default Max Budget set to 150
 if 'max_budget' not in st.session_state:
-    st.session_state.max_budget = 150.00
+    st.session_state.max_budget = 150.00 
 if 'marketer_cost_input' not in st.session_state:
     st.session_state.marketer_cost_input = 0.0
 if 'last_cart_total' not in st.session_state:
     st.session_state.last_cart_total = 0.0
 
-# --- FUNCTIONS ---
-def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
+# --- HELPER FUNCTIONS ---
+def add_to_cart_logic(item_name, variant_name, m_cost, r_cost, qty):
     st.session_state.cart.append({
         "Item": item_name,
         "Variant": variant_name,
@@ -173,20 +174,10 @@ def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
         "Total R": r_cost * qty
     })
 
-def clear_cart():
-    st.session_state.cart = []
-    st.session_state.marketer_cost_input = 0.0
-    st.session_state.last_cart_total = 0.0
-    # Also clear any form inputs that might be lingering
-    for key in list(st.session_state.keys()):
-        if key.startswith("input_"):
-            st.session_state[key] = 0.0
-
 # --- CALLBACKS (The Secret Sauce to avoid Errors) ---
 def form_callback(item_name, variants):
     """
-    This runs BEFORE the script reruns, allowing us to safely modify session state
-    without triggering the 'Modified after Instantiation' error.
+    Handles adding items to cart securely before redraw.
     """
     any_added = False
     for variant in variants:
@@ -197,18 +188,37 @@ def form_callback(item_name, variants):
             if variant.get('type') == 'money':
                 calc_m = val * variant['ratio']
                 display_name = f"{variant['name']} (Val: ${val:.2f})"
-                add_to_cart(item_name, display_name, calc_m, val, 1)
+                add_to_cart_logic(item_name, display_name, calc_m, val, 1)
             else:
                 qty_int = int(val)
-                add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
+                add_to_cart_logic(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
             
-            # Safe reset because we are in a callback!
+            # Safe reset
             st.session_state[key] = 0.0
             any_added = True
     
     if any_added:
-        # We store a message to show on the NEXT run
         st.session_state['success_msg'] = f"Added {item_name} to cart!"
+
+def clear_cart_callback():
+    """
+    Handles clearing the cart securely before redraw.
+    """
+    st.session_state.cart = []
+    st.session_state.marketer_cost_input = 0.0
+    st.session_state.last_cart_total = 0.0
+    # Clear all input fields
+    for key in list(st.session_state.keys()):
+        if key.startswith("input_"):
+            st.session_state[key] = 0.0
+    
+    st.session_state['success_msg'] = "Cart cleared for new guest."
+
+def remove_item_callback(index):
+    """
+    Handles removing a single item securely.
+    """
+    st.session_state.cart.pop(index)
 
 # --- TOP DASHBOARD (THE MONEY ZONE) ---
 st.title("🎟️ PCB Gift Calculator")
@@ -279,7 +289,7 @@ selected_item = DB[category][item_name]
 if selected_item['notes']:
     st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
 
-# Use a Form, but manage keys manually for stability
+# Use a Form
 with st.form("add_form", clear_on_submit=False):
     if item_name == "Restaurant Cards":
         st.caption("Enter the dollar amount you want to give.")
@@ -300,7 +310,6 @@ with st.form("add_form", clear_on_submit=False):
             # Stable key based on item+variant
             stable_key = f"input_{item_name}_{variant['name']}"
             
-            # Initialize key in session state if missing
             if stable_key not in st.session_state:
                 st.session_state[stable_key] = 0.0
 
@@ -334,26 +343,4 @@ if len(st.session_state.cart) > 0:
         with col1:
             st.write(f"**{item['Item']}**")
             st.caption(f"{item['Variant']}")
-        with col2:
-            st.write(f"Qty: {item['Qty']}")
-            st.write(f"${item['Total M']:.2f}")
-        with col3:
-            if st.button("🗑️", key=f"remove_{i}"):
-                st.session_state.cart.pop(i)
-                st.rerun()
-        st.divider()
-
-    st.markdown(f"""
-        <div style="background-color: #d4edda; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
-            <h2 style="color: #155724; margin:0;">Total Retail Value: ${total_r_cost:,.2f}</h2>
-            <p style="color: #155724; margin:0;">(Value to Guest)</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.write("") 
-    if st.button("Clear All / New Guest", type="secondary"):
-        clear_cart()
-        st.rerun()
-
-else:
-    st.info("Cart is empty. Select items above to start.")
+        with col
