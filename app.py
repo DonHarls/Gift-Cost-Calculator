@@ -155,7 +155,7 @@ DB = {
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 if 'max_budget' not in st.session_state:
-    st.session_state.max_budget = 150.00
+    st.session_state.max_budget = 200.00
 if 'marketer_cost_input' not in st.session_state:
     st.session_state.marketer_cost_input = 0.0
 if 'last_cart_total' not in st.session_state:
@@ -163,16 +163,15 @@ if 'last_cart_total' not in st.session_state:
 
 # --- FUNCTIONS ---
 def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
-    if qty > 0:
-        st.session_state.cart.append({
-            "Item": item_name,
-            "Variant": variant_name,
-            "Marketer Cost": m_cost,
-            "Retail Cost": r_cost,
-            "Qty": qty,
-            "Total M": m_cost * qty,
-            "Total R": r_cost * qty
-        })
+    st.session_state.cart.append({
+        "Item": item_name,
+        "Variant": variant_name,
+        "Marketer Cost": m_cost,
+        "Retail Cost": r_cost,
+        "Qty": qty,
+        "Total M": m_cost * qty,
+        "Total R": r_cost * qty
+    })
 
 def clear_cart():
     st.session_state.cart = []
@@ -182,6 +181,34 @@ def clear_cart():
     for key in list(st.session_state.keys()):
         if key.startswith("input_"):
             st.session_state[key] = 0.0
+
+# --- CALLBACKS (The Secret Sauce to avoid Errors) ---
+def form_callback(item_name, variants):
+    """
+    This runs BEFORE the script reruns, allowing us to safely modify session state
+    without triggering the 'Modified after Instantiation' error.
+    """
+    any_added = False
+    for variant in variants:
+        key = f"input_{item_name}_{variant['name']}"
+        val = st.session_state.get(key, 0.0)
+        
+        if val > 0:
+            if variant.get('type') == 'money':
+                calc_m = val * variant['ratio']
+                display_name = f"{variant['name']} (Val: ${val:.2f})"
+                add_to_cart(item_name, display_name, calc_m, val, 1)
+            else:
+                qty_int = int(val)
+                add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
+            
+            # Safe reset because we are in a callback!
+            st.session_state[key] = 0.0
+            any_added = True
+    
+    if any_added:
+        # We store a message to show on the NEXT run
+        st.session_state['success_msg'] = f"Added {item_name} to cart!"
 
 # --- TOP DASHBOARD (THE MONEY ZONE) ---
 st.title("🎟️ PCB Gift Calculator")
@@ -240,6 +267,11 @@ st.divider()
 # --- MAIN SELECTION AREA ---
 st.header("Build Package")
 
+# Show Success Message if one exists from the callback
+if 'success_msg' in st.session_state and st.session_state['success_msg']:
+    st.success(st.session_state['success_msg'])
+    del st.session_state['success_msg']
+
 category = st.selectbox("Select Category", list(DB.keys()))
 item_name = st.selectbox("Select Attraction/Item", list(DB[category].keys()))
 selected_item = DB[category][item_name]
@@ -252,9 +284,6 @@ with st.form("add_form", clear_on_submit=False):
     if item_name == "Restaurant Cards":
         st.caption("Enter the dollar amount you want to give.")
 
-    # We need to collect the keys of the current inputs so we can reset them manually later
-    current_input_keys = []
-    
     for variant in selected_item['variants']:
         c1, c2, c3 = st.columns([3, 2, 2])
         is_money_type = variant.get('type') == 'money'
@@ -269,9 +298,7 @@ with st.form("add_form", clear_on_submit=False):
                 st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
         with c3:
             # Stable key based on item+variant
-            # We prefix with "input_" to easily identify them
             stable_key = f"input_{item_name}_{variant['name']}"
-            current_input_keys.append(stable_key)
             
             # Initialize key in session state if missing
             if stable_key not in st.session_state:
@@ -288,35 +315,13 @@ with st.form("add_form", clear_on_submit=False):
                     key=stable_key, label_visibility="collapsed"
                 )
 
-    submitted = st.form_submit_button("Add to Cart", type="primary")
-
-    if submitted:
-        any_added = False
-        # Iterate through the variants and read from Session State directly
-        for variant in selected_item['variants']:
-            stable_key = f"input_{item_name}_{variant['name']}"
-            val = st.session_state[stable_key]
-            
-            if val > 0:
-                if variant.get('type') == 'money':
-                    calc_m = val * variant['ratio']
-                    display_name = f"{variant['name']} (Val: ${val:.2f})"
-                    add_to_cart(item_name, display_name, calc_m, val, 1)
-                else:
-                    # Convert float qty to int for display if needed
-                    qty_int = int(val)
-                    add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
-                
-                any_added = True
-        
-        if any_added:
-            st.success(f"Added {item_name} to cart!")
-            # MANUALLY RESET THE INPUTS HERE
-            for k in current_input_keys:
-                st.session_state[k] = 0.0
-            st.rerun()
-        else:
-            st.warning("Please enter a value greater than 0.")
+    # SUBMIT BUTTON WITH CALLBACK
+    submitted = st.form_submit_button(
+        "Add to Cart", 
+        type="primary",
+        on_click=form_callback,
+        args=(item_name, selected_item['variants'])
+    )
 
 st.divider()
 
