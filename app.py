@@ -5,7 +5,6 @@ import pandas as pd
 st.set_page_config(page_title="PCB Gift Calculator", page_icon="🌴", layout="wide")
 
 # --- DATA DATABASE ---
-# Updated to use "type": "money" for items where you type a dollar amount.
 DB = {
     "Attractions": {
         "Just Jump": {
@@ -168,6 +167,9 @@ if 'marketer_cost_input' not in st.session_state:
     st.session_state.marketer_cost_input = 0.0
 if 'last_cart_total' not in st.session_state:
     st.session_state.last_cart_total = 0.0
+# NEW: Counter to force-reset forms securely
+if 'form_reset_counter' not in st.session_state:
+    st.session_state.form_reset_counter = 0
 
 # --- FUNCTIONS ---
 def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
@@ -186,6 +188,7 @@ def clear_cart():
     st.session_state.cart = []
     st.session_state.marketer_cost_input = 0.0
     st.session_state.last_cart_total = 0.0
+    st.session_state.form_reset_counter += 1 # Resets inputs too
 
 # --- TOP DASHBOARD (THE MONEY ZONE) ---
 st.title("🎟️ PCB Gift Calculator")
@@ -247,7 +250,8 @@ selected_item = DB[category][item_name]
 if selected_item['notes']:
     st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
 
-with st.form("add_form", clear_on_submit=True):
+# FIX: clear_on_submit=False to prevent Enter-key bug
+with st.form("add_form", clear_on_submit=False):
     # Dictionaries to store inputs
     input_values = {}
     
@@ -256,29 +260,29 @@ with st.form("add_form", clear_on_submit=True):
 
     for variant in selected_item['variants']:
         c1, c2, c3 = st.columns([3, 2, 2])
-        
-        # Check if this is a "Money" input item
         is_money_type = variant.get('type') == 'money'
         
         with c1:
             st.write(f"**{variant['name']}**")
         with c2:
             if is_money_type:
-                # Show ratio for clarity (e.g. "Cost: 80%")
                 pct = int(variant['ratio'] * 100)
                 st.caption(f"Cost: {pct}% of Retail")
             else:
                 st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
         with c3:
-            # Render different inputs based on type
-            key_id = f"{item_name}_{variant['name']}"
+            # FIX: We use a session-state based key to force reset only when we want to.
+            # This allows typing "80" + Enter without glitching.
+            unique_key = f"{item_name}_{variant['name']}_{st.session_state.form_reset_counter}"
+            
             if is_money_type:
+                # removed 'step' constraint to allow any number
                 input_values[variant['name']] = st.number_input(
-                    "Amount ($)", min_value=0.0, value=0.0, step=5.0, key=key_id, label_visibility="collapsed"
+                    "Amount ($)", min_value=0.0, value=0.0, key=unique_key, label_visibility="collapsed"
                 )
             else:
                 input_values[variant['name']] = st.number_input(
-                    "Qty", min_value=0, value=0, key=key_id, label_visibility="collapsed"
+                    "Qty", min_value=0, value=0, key=unique_key, label_visibility="collapsed"
                 )
 
     submitted = st.form_submit_button("Add to Cart", type="primary")
@@ -290,21 +294,17 @@ with st.form("add_form", clear_on_submit=True):
             
             if val > 0:
                 if variant.get('type') == 'money':
-                    # Special logic for Money items
-                    # m_cost is calculated dynamically based on input * ratio
-                    # r_cost is the input itself
-                    # qty is 1 (representing "1 custom value")
                     calc_m = val * variant['ratio']
-                    display_name = f"{variant['name']} (Val: ${val:.0f})"
+                    display_name = f"{variant['name']} (Val: ${val:.2f})"
                     add_to_cart(item_name, display_name, calc_m, val, 1)
                 else:
-                    # Standard logic for Tickets
                     add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], val)
                 
                 any_added = True
         
         if any_added:
             st.success(f"Added {item_name} to cart!")
+            st.session_state.form_reset_counter += 1 # FORCE RESET NOW
             st.rerun()
         else:
             st.warning("Please enter a value greater than 0.")
