@@ -155,7 +155,7 @@ DB = {
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 if 'max_budget' not in st.session_state:
-    st.session_state.max_budget = 200.00
+    st.session_state.max_budget = 150.00
 if 'marketer_cost_input' not in st.session_state:
     st.session_state.marketer_cost_input = 0.0
 if 'last_cart_total' not in st.session_state:
