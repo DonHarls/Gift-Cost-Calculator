@@ -128,7 +128,7 @@ DB = {
             "notes": "Major trips and getaways. See restrictions.",
             "variants": [
                 {"name": "8/7 Resort Stay", "m_cost": 75.00, "r_cost": 1499.00},
-                {"name": "Cruise (3-5 Night)", "m_cost": 75.00, "r_cost": 1550.00},
+                {"name": "Cruise", "m_cost": 75.00, "r_cost": 1550.00},
                 {"name": "Vacation Pass", "m_cost": 0.00, "r_cost": 1098.00},
                 {"name": "Resort Condo (7 Night)", "m_cost": 75.00, "r_cost": 2100.00},
             ]
@@ -296,3 +296,4 @@ with st.form("add_form", clear_on_submit=False):
         for variant in selected_item['variants']:
             stable_key = f"input_{item_name}_{variant['name']}"
             val
+
