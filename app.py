@@ -5,6 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="PCB Gift Calculator", page_icon="🌴", layout="wide")
 
 # --- DATA DATABASE ---
+# Updated to use "type": "money" for items where you type a dollar amount.
 DB = {
     "Attractions": {
         "Just Jump": {
@@ -104,31 +105,28 @@ DB = {
     },
     "Restaurants & Gifts": {
         "Restaurant Cards": {
-            "notes": "Specific notes per restaurant apply.",
+            "notes": "Enter the Retail Value ($). Cost is calculated automatically.",
             "variants": [
-                {"name": "Capt Anderson's ($25)", "m_cost": 20.00, "r_cost": 25.00},
-                {"name": "FireFly ($25)", "m_cost": 20.00, "r_cost": 25.00},
-                {"name": "Sharky's ($25)", "m_cost": 20.00, "r_cost": 25.00},
-                {"name": "HammerHead Fred's ($25)", "m_cost": 20.00, "r_cost": 25.00},
-                {"name": "Runaway Island ($25)", "m_cost": 20.00, "r_cost": 25.00},
-                {"name": "Multi-Rest Card ($25)", "m_cost": 21.25, "r_cost": 25.00},
-                {"name": "Dick's Last Resort ($50)", "m_cost": 40.00, "r_cost": 50.00},
-                {"name": "Dave & Buster's ($20)", "m_cost": 10.00, "r_cost": 20.00},
+                {"name": "Capt Anderson's", "type": "money", "ratio": 0.8},
+                {"name": "FireFly", "type": "money", "ratio": 0.8},
+                {"name": "Sharky's", "type": "money", "ratio": 0.8},
+                {"name": "HammerHead Fred's", "type": "money", "ratio": 0.8},
+                {"name": "Runaway Island", "type": "money", "ratio": 0.8},
+                {"name": "Multi-Rest Card", "type": "money", "ratio": 0.85},
+                {"name": "Dick's Last Resort", "type": "money", "ratio": 0.8},
+                {"name": "Dave & Buster's", "type": "money", "ratio": 0.5},
             ]
         },
         "Margaritaville": {
-            "notes": "No online purchases. Good for Restaurant or Gift Shop. Must have smart phone.",
+            "notes": "Enter total amount. Cost is 50%.",
             "variants": [
-                {"name": "$10 Increment", "m_cost": 10.00, "r_cost": 20.00},
-                {"name": "$15 Increment", "m_cost": 15.00, "r_cost": 30.00},
-                {"name": "$20 Increment", "m_cost": 20.00, "r_cost": 40.00},
-                {"name": "$25 Increment", "m_cost": 25.00, "r_cost": 50.00},
+                {"name": "Gift Card Amount", "type": "money", "ratio": 0.5},
             ]
         },
         "Tango Rewards": {
             "notes": "No Cash Cards. Max $175 retail cost.",
             "variants": [
-                {"name": "$100 Link", "m_cost": 100.00, "r_cost": 100.00},
+                {"name": "Tango Link Amount", "type": "money", "ratio": 1.0},
             ]
         }
     },
@@ -186,22 +184,18 @@ def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
 
 def clear_cart():
     st.session_state.cart = []
-    # Reset tracking variables
     st.session_state.marketer_cost_input = 0.0
     st.session_state.last_cart_total = 0.0
 
 # --- TOP DASHBOARD (THE MONEY ZONE) ---
 st.title("🎟️ PCB Gift Calculator")
 
-# 1. Calculate Raw Totals from Cart (Sum of all items)
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
 total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
 
-# 2. Layout Top Metrics
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    # User input for the budget cap
     st.session_state.max_budget = st.number_input(
         "Max Budget (Company)", 
         value=st.session_state.max_budget, 
@@ -209,51 +203,36 @@ with col1:
     )
 
 with col2:
-    # --- SMART INPUT LOGIC ---
     if raw_m_cost != st.session_state.last_cart_total:
-        # Cart changed! Auto-update the "Willing to Pay" to the max allowable by budget.
         new_default = min(raw_m_cost, st.session_state.max_budget)
         st.session_state.marketer_cost_input = new_default
-        # Update our tracker
         st.session_state.last_cart_total = raw_m_cost
 
-    # The Input Box (This drives the calculation)
     marketer_pay_input = st.number_input(
         "Marketer Cost (You Pay)", 
-        key="marketer_cost_input", # Linked to session state
+        key="marketer_cost_input", 
         step=1.0,
         help="Type the amount you want to pay. Guest pays the rest."
     )
     
-    # --- MATH LOGIC ---
     if raw_m_cost > 0:
         calculated_guest_pay = raw_m_cost - marketer_pay_input
         guest_pays = max(75.0, calculated_guest_pay)
-        
-        # If the $75 rule forced the guest pay UP, the marketer pay must go DOWN.
         effective_marketer_pay = raw_m_cost - guest_pays
     else:
         guest_pays = 0.0
         effective_marketer_pay = 0.0
 
-    # Warning if the user typed a number higher than possible due to $75 rule
     if effective_marketer_pay < marketer_pay_input:
         st.caption(f"🔒 Adjusted to **${effective_marketer_pay:,.2f}** (Guest Min $75)")
     
-    # Warning if Over Budget
     if effective_marketer_pay > st.session_state.max_budget:
          st.caption(f"⚠️ Over Budget")
 
-
 with col3:
-    # Display Guest Pays
     st.metric("Guest Pays", f"${guest_pays:,.2f}")
-    
-    # Visual cues
     if guest_pays == 75.0 and raw_m_cost > 0:
         st.caption("🔒 Min. Payment Applied")
-    
-    # Show Total Cart Value for reference
     st.markdown(f"<div style='text-align: right; color: gray; font-size: 0.8em;'>Cart Value: ${raw_m_cost:,.2f}</div>", unsafe_allow_html=True)
 
 st.divider()
@@ -261,56 +240,74 @@ st.divider()
 # --- MAIN SELECTION AREA ---
 st.header("Build Package")
 
-# 1. Select Category
 category = st.selectbox("Select Category", list(DB.keys()))
-
-# 2. Select Item
 item_name = st.selectbox("Select Attraction/Item", list(DB[category].keys()))
 selected_item = DB[category][item_name]
 
-# 3. Message Box (Special Notes)
 if selected_item['notes']:
     st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
 
-# 4. Variant Inputs (Separated Adult/Child/etc)
 with st.form("add_form", clear_on_submit=True):
-    st.write("Enter Quantities:")
+    # Dictionaries to store inputs
+    input_values = {}
     
-    # Create a dictionary to hold quantity inputs for this specific form submission
-    quantities = {}
-    
-    # specific restaurant note handling (hardcoded exception for cards)
     if item_name == "Restaurant Cards":
-        st.caption("Check individual card restrictions (e.g. Closed Mondays) on sheet.")
+        st.caption("Enter the dollar amount you want to give.")
 
     for variant in selected_item['variants']:
-        # Create 3 columns for a clean layout: Name | Price | Input
         c1, c2, c3 = st.columns([3, 2, 2])
+        
+        # Check if this is a "Money" input item
+        is_money_type = variant.get('type') == 'money'
+        
         with c1:
             st.write(f"**{variant['name']}**")
         with c2:
-            st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
+            if is_money_type:
+                # Show ratio for clarity (e.g. "Cost: 80%")
+                pct = int(variant['ratio'] * 100)
+                st.caption(f"Cost: {pct}% of Retail")
+            else:
+                st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
         with c3:
-            # unique key is needed for each input to avoid conflicts
-            quantities[variant['name']] = st.number_input(
-                "Qty", min_value=0, value=0, key=f"{item_name}_{variant['name']}", label_visibility="collapsed"
-            )
+            # Render different inputs based on type
+            key_id = f"{item_name}_{variant['name']}"
+            if is_money_type:
+                input_values[variant['name']] = st.number_input(
+                    "Amount ($)", min_value=0.0, value=0.0, step=5.0, key=key_id, label_visibility="collapsed"
+                )
+            else:
+                input_values[variant['name']] = st.number_input(
+                    "Qty", min_value=0, value=0, key=key_id, label_visibility="collapsed"
+                )
 
     submitted = st.form_submit_button("Add to Cart", type="primary")
 
     if submitted:
         any_added = False
         for variant in selected_item['variants']:
-            qty = quantities[variant['name']]
-            if qty > 0:
-                add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty)
+            val = input_values[variant['name']]
+            
+            if val > 0:
+                if variant.get('type') == 'money':
+                    # Special logic for Money items
+                    # m_cost is calculated dynamically based on input * ratio
+                    # r_cost is the input itself
+                    # qty is 1 (representing "1 custom value")
+                    calc_m = val * variant['ratio']
+                    display_name = f"{variant['name']} (Val: ${val:.0f})"
+                    add_to_cart(item_name, display_name, calc_m, val, 1)
+                else:
+                    # Standard logic for Tickets
+                    add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], val)
+                
                 any_added = True
         
         if any_added:
             st.success(f"Added {item_name} to cart!")
-            st.rerun() # Forces the totals to update instantly
+            st.rerun()
         else:
-            st.warning("Please enter a quantity greater than 0.")
+            st.warning("Please enter a value greater than 0.")
             
 st.divider()
 
@@ -318,30 +315,20 @@ st.divider()
 st.header("Current Package")
 
 if len(st.session_state.cart) > 0:
-    
-    # --- ITEM LIST WITH DELETE BUTTONS ---
     for i, item in enumerate(st.session_state.cart):
-        # Create a container for each item row
-        # Layout: Item Info (Wide) | Costs (Medium) | Delete Button (Small)
         col1, col2, col3 = st.columns([5, 2, 1])
-        
         with col1:
             st.write(f"**{item['Item']}**")
             st.caption(f"{item['Variant']}")
-            
         with col2:
             st.write(f"Qty: {item['Qty']}")
             st.write(f"${item['Total M']:.2f}")
-            
         with col3:
-            # The trash can button
             if st.button("🗑️", key=f"remove_{i}"):
-                st.session_state.cart.pop(i) # Remove item at this index
-                st.rerun() # Refresh app instantly
-        
-        st.divider() # Line between items
+                st.session_state.cart.pop(i)
+                st.rerun()
+        st.divider()
 
-    # Big Green Retail Value Box
     st.markdown(f"""
         <div style="background-color: #d4edda; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
             <h2 style="color: #155724; margin:0;">Total Retail Value: ${total_r_cost:,.2f}</h2>
@@ -349,7 +336,7 @@ if len(st.session_state.cart) > 0:
         </div>
     """, unsafe_allow_html=True)
     
-    st.write("") # Spacer
+    st.write("") 
     if st.button("Clear All / New Guest", type="secondary"):
         clear_cart()
         st.rerun()
