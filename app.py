@@ -161,6 +161,10 @@ if 'marketer_cost_input' not in st.session_state:
 if 'last_cart_total' not in st.session_state:
     st.session_state.last_cart_total = 0.0
 
+# **CRITICAL FIX**: A counter to create fresh input boxes every time
+if 'form_id' not in st.session_state:
+    st.session_state.form_id = 0
+
 # --- FUNCTIONS ---
 def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
     if qty > 0:
@@ -178,10 +182,7 @@ def clear_cart():
     st.session_state.cart = []
     st.session_state.marketer_cost_input = 0.0
     st.session_state.last_cart_total = 0.0
-    # Also clear any form inputs that might be lingering
-    for key in list(st.session_state.keys()):
-        if key.startswith("input_"):
-            st.session_state[key] = 0.0
+    st.session_state.form_id += 1 # Reset form inputs too
 
 # --- TOP DASHBOARD (THE MONEY ZONE) ---
 st.title("🎟️ PCB Gift Calculator")
@@ -189,11 +190,8 @@ st.title("🎟️ PCB Gift Calculator")
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
 total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
 
-# Use list unpacking for columns to avoid syntax errors with long lines
-columns = st.columns(3)
-col1 = columns[0]
-col2 = columns[1]
-col3 = columns[2]
+cols = st.columns(3)
+col1, col2, col3 = cols[0], cols[1], cols[2]
 
 with col1:
     st.session_state.max_budget = st.number_input(
@@ -233,9 +231,9 @@ with col3:
     st.metric("Guest Pays", f"${guest_pays:,.2f}")
     if guest_pays == 75.0 and raw_m_cost > 0:
         st.caption("🔒 Min. Payment Applied")
-    # Using format to keep line short and safe
     st.markdown(
-        f"<div style='text-align: right; color: gray; font-size: 0.8em;'>Cart Value: ${raw_m_cost:,.2f}</div>", 
+        f"<div style='text-align: right; color: gray; font-size: 0.8em;'>"
+        f"Cart Value: ${raw_m_cost:,.2f}</div>", 
         unsafe_allow_html=True
     )
 
@@ -256,110 +254,5 @@ with st.form("add_form", clear_on_submit=False):
     if item_name == "Restaurant Cards":
         st.caption("Enter the dollar amount you want to give.")
 
-    # We need to collect the keys of the current inputs so we can reset them manually later
-    current_input_keys = []
-    
-    for variant in selected_item['variants']:
-        # Safer column unpacking
-        cols = st.columns([3, 2, 2])
-        c1, c2, c3 = cols[0], cols[1], cols[2]
-        
-        is_money_type = variant.get('type') == 'money'
-        
-        with c1:
-            st.write(f"**{variant['name']}**")
-        with c2:
-            if is_money_type:
-                pct = int(variant['ratio'] * 100)
-                st.caption(f"Cost: {pct}% of Retail")
-            else:
-                st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
-        with c3:
-            # Stable key based on item+variant
-            stable_key = f"input_{item_name}_{variant['name']}"
-            current_input_keys.append(stable_key)
-            
-            # Initialize key in session state if missing
-            if stable_key not in st.session_state:
-                st.session_state[stable_key] = 0.0
-
-            if is_money_type:
-                st.number_input(
-                    "Amount ($)", min_value=0.0, step=0.01, 
-                    key=stable_key, label_visibility="collapsed"
-                )
-            else:
-                st.number_input(
-                    "Qty", min_value=0.0, step=1.0, 
-                    key=stable_key, label_visibility="collapsed"
-                )
-
-    submitted = st.form_submit_button("Add to Cart", type="primary")
-
-    if submitted:
-        any_added = False
-        # Iterate through the variants and read from Session State directly
-        for variant in selected_item['variants']:
-            stable_key = f"input_{item_name}_{variant['name']}"
-            
-            # --- THE FIX: SAFETY CHECK ---
-            # We use .get() so if the key is missing, it returns 0.0 instead of crashing
-            val = st.session_state.get(stable_key, 0.0)
-            
-            if val > 0:
-                if variant.get('type') == 'money':
-                    calc_m = val * variant['ratio']
-                    display_name = f"{variant['name']} (Val: ${val:.2f})"
-                    add_to_cart(item_name, display_name, calc_m, val, 1)
-                else:
-                    qty_int = int(val)
-                    add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
-                
-                any_added = True
-        
-        if any_added:
-            st.success(f"Added {item_name} to cart!")
-            # MANUALLY RESET THE INPUTS HERE
-            for k in current_input_keys:
-                st.session_state[k] = 0.0
-            st.rerun()
-        else:
-            st.warning("Please enter a value greater than 0.")
-
-st.divider()
-
-# --- BOTTOM SUMMARY (THE RECEIPT) ---
-st.header("Current Package")
-
-if len(st.session_state.cart) > 0:
-    for i, item in enumerate(st.session_state.cart):
-        # Safer column unpacking
-        cols = st.columns([5, 2, 1])
-        col1, col2, col3 = cols[0], cols[1], cols[2]
-        
-        with col1:
-            st.write(f"**{item['Item']}**")
-            st.caption(f"{item['Variant']}")
-        with col2:
-            st.write(f"Qty: {item['Qty']}")
-            st.write(f"${item['Total M']:.2f}")
-        with col3:
-            if st.button("🗑️", key=f"remove_{i}"):
-                st.session_state.cart.pop(i)
-                st.rerun()
-        st.divider()
-
-    st.markdown(f"""
-        <div style="background-color: #d4edda; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
-            <h2 style="color: #155724; margin:0;">Total Retail Value: ${total_r_cost:,.2f}</h2>
-            <p style="color: #155724; margin:0;">(Value to Guest)</p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.write("") 
-    if st.button("Clear All / New Guest", type="secondary"):
-        clear_cart()
-        st.rerun()
-
-else:
-    st.info("Cart is empty. Select items above to start.")
+    # We capture the inputs into this dict
+    # We use a UNIQUE KEY that changes every
