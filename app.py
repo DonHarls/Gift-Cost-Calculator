@@ -160,8 +160,6 @@ if 'marketer_cost_input' not in st.session_state:
     st.session_state.marketer_cost_input = 0.0
 if 'last_cart_total' not in st.session_state:
     st.session_state.last_cart_total = 0.0
-if 'input_id' not in st.session_state:
-    st.session_state.input_id = 0
 
 # --- FUNCTIONS ---
 def add_to_cart(item_name, variant_name, m_cost, r_cost, qty):
@@ -180,7 +178,10 @@ def clear_cart():
     st.session_state.cart = []
     st.session_state.marketer_cost_input = 0.0
     st.session_state.last_cart_total = 0.0
-    st.session_state.input_id += 1 # Reset inputs on clear
+    # Also clear any form inputs that might be lingering
+    for key in list(st.session_state.keys()):
+        if key.startswith("input_"):
+            st.session_state[key] = 0.0
 
 # --- TOP DASHBOARD (THE MONEY ZONE) ---
 st.title("🎟️ PCB Gift Calculator")
@@ -188,9 +189,7 @@ st.title("🎟️ PCB Gift Calculator")
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
 total_r_cost = sum(item['Total R'] for item in st.session_state.cart)
 
-# Safe column unpacking
-cols = st.columns(3)
-col1, col2, col3 = cols[0], cols[1], cols[2]
+col1, col2, col3 = st.columns(3)
 
 with col1:
     st.session_state.max_budget = st.number_input(
@@ -248,23 +247,16 @@ selected_item = DB[category][item_name]
 if selected_item['notes']:
     st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
 
-# ----------------------------------------------------
-# THE FIX: We use 'input_id' in the keys. 
-# When we add to cart, we increase input_id. 
-# This tells Streamlit to destroy the old boxes and make new ones (which default to 0).
-# ----------------------------------------------------
-
+# Use a Form, but manage keys manually for stability
 with st.form("add_form", clear_on_submit=False):
     if item_name == "Restaurant Cards":
         st.caption("Enter the dollar amount you want to give.")
 
-    # We use this dict to capture the values from the form
-    captured_inputs = {}
-
+    # We need to collect the keys of the current inputs so we can reset them manually later
+    current_input_keys = []
+    
     for variant in selected_item['variants']:
-        cols = st.columns([3, 2, 2])
-        c1, c2, c3 = cols[0], cols[1], cols[2]
-        
+        c1, c2, c3 = st.columns([3, 2, 2])
         is_money_type = variant.get('type') == 'money'
         
         with c1:
@@ -276,28 +268,34 @@ with st.form("add_form", clear_on_submit=False):
             else:
                 st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
         with c3:
-            # THIS IS THE KEY PART: The key changes every time input_id changes.
-            unique_key = f"{item_name}_{variant['name']}_{st.session_state.input_id}"
+            # Stable key based on item+variant
+            # We prefix with "input_" to easily identify them
+            stable_key = f"input_{item_name}_{variant['name']}"
+            current_input_keys.append(stable_key)
             
+            # Initialize key in session state if missing
+            if stable_key not in st.session_state:
+                st.session_state[stable_key] = 0.0
+
             if is_money_type:
-                captured_inputs[variant['name']] = st.number_input(
+                st.number_input(
                     "Amount ($)", min_value=0.0, step=0.01, 
-                    key=unique_key, label_visibility="collapsed"
+                    key=stable_key, label_visibility="collapsed"
                 )
             else:
-                captured_inputs[variant['name']] = st.number_input(
+                st.number_input(
                     "Qty", min_value=0.0, step=1.0, 
-                    key=unique_key, label_visibility="collapsed"
+                    key=stable_key, label_visibility="collapsed"
                 )
 
     submitted = st.form_submit_button("Add to Cart", type="primary")
 
     if submitted:
         any_added = False
-        
+        # Iterate through the variants and read from Session State directly
         for variant in selected_item['variants']:
-            # Retrieve value from the dictionary we built above
-            val = captured_inputs.get(variant['name'], 0.0)
+            stable_key = f"input_{item_name}_{variant['name']}"
+            val = st.session_state[stable_key]
             
             if val > 0:
                 if variant.get('type') == 'money':
@@ -305,6 +303,7 @@ with st.form("add_form", clear_on_submit=False):
                     display_name = f"{variant['name']} (Val: ${val:.2f})"
                     add_to_cart(item_name, display_name, calc_m, val, 1)
                 else:
+                    # Convert float qty to int for display if needed
                     qty_int = int(val)
                     add_to_cart(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
                 
@@ -312,8 +311,9 @@ with st.form("add_form", clear_on_submit=False):
         
         if any_added:
             st.success(f"Added {item_name} to cart!")
-            # Reset the form by changing the ID
-            st.session_state.input_id += 1
+            # MANUALLY RESET THE INPUTS HERE
+            for k in current_input_keys:
+                st.session_state[k] = 0.0
             st.rerun()
         else:
             st.warning("Please enter a value greater than 0.")
@@ -325,9 +325,7 @@ st.header("Current Package")
 
 if len(st.session_state.cart) > 0:
     for i, item in enumerate(st.session_state.cart):
-        cols = st.columns([5, 2, 1])
-        col1, col2, col3 = cols[0], cols[1], cols[2]
-        
+        col1, col2, col3 = st.columns([5, 2, 1])
         with col1:
             st.write(f"**{item['Item']}**")
             st.caption(f"{item['Variant']}")
