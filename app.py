@@ -121,6 +121,13 @@ DB = {
             "variants": [
                 {"name": "Gift Card Amount", "type": "money", "ratio": 0.5},
             ]
+        },
+        "Tango & Amex": {
+            "notes": "Enter total amount. Cost is 100% of value.",
+            "variants": [
+                {"name": "Tango Card", "type": "money", "ratio": 1.0},
+                {"name": "American Express", "type": "money", "ratio": 1.0},
+            ]
         }
     },
     "Vacations & Points": {
@@ -140,12 +147,6 @@ DB = {
                 {"name": "15,000 Points", "m_cost": 77.00, "r_cost": 150.00},
                 {"name": "30,000 Points", "m_cost": 154.00, "r_cost": 300.00},
                 {"name": "45,000 Points", "m_cost": 231.00, "r_cost": 450.00},
-            ]
-        },
-        "Tango Rewards": {
-            "notes": "No Cash Cards. Max $175 retail cost.",
-            "variants": [
-                {"name": "Tango Link Amount", "type": "money", "ratio": 1.0},
             ]
         }
     }
@@ -223,30 +224,21 @@ with col1:
     )
 
 with col2:
-    # 1. Update Default if Cart Changed
     if raw_m_cost != st.session_state.last_cart_total:
         new_default = min(raw_m_cost, st.session_state.max_budget)
         st.session_state.marketer_cost_input = new_default
         st.session_state.last_cart_total = raw_m_cost
 
-    # 2. Logic to Enforce $75 Rule on the Input Box
-    # We calculate what the "Allowed" input is.
-    # Allowed Input = Raw Cost - 75.00 (Because Guest MUST pay at least 75)
     max_allowed_marketer_pay = max(0.0, raw_m_cost - 75.0)
-    
-    # We also have the Budget Limit
     final_limit = min(max_allowed_marketer_pay, st.session_state.max_budget)
     
-    # Store original input for captioning purposes
     original_input = st.session_state.marketer_cost_input
     was_adjusted = False
 
-    # Check if current input violates the rule
     if st.session_state.marketer_cost_input > final_limit:
         st.session_state.marketer_cost_input = final_limit
         was_adjusted = True
 
-    # 3. Render the Input Box (It will now display the adjusted value)
     marketer_pay_input = st.number_input(
         "Marketer Cost (You Pay)", 
         key="marketer_cost_input", 
@@ -254,17 +246,14 @@ with col2:
         help="Type the amount you want to pay. Guest pays the rest."
     )
     
-    # 4. Calculate Final Numbers for Display
     if raw_m_cost > 0:
         calculated_guest_pay = raw_m_cost - marketer_pay_input
         guest_pays = max(75.0, calculated_guest_pay)
-        # Recalculate effective just to be safe, though input is already capped
         effective_marketer_pay = raw_m_cost - guest_pays
     else:
         guest_pays = 0.0
         effective_marketer_pay = 0.0
 
-    # 5. Display Adjustments
     if was_adjusted and raw_m_cost > 0:
          st.caption(f"🔒 Adjusted from **${original_input:,.2f}** (Guest Min $75)")
     
