@@ -154,7 +154,6 @@ DB = {
 # --- INITIALIZE SESSION STATE ---
 if 'cart' not in st.session_state:
     st.session_state.cart = []
-# Set Default Budget to 150.00
 if 'max_budget' not in st.session_state:
     st.session_state.max_budget = 150.00 
 if 'marketer_cost_input' not in st.session_state:
@@ -190,7 +189,6 @@ def form_callback(item_name, variants):
                 qty_int = int(val)
                 add_to_cart_logic(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
             
-            # Reset input in callback
             st.session_state[key] = 0.0
             any_added = True
     
@@ -225,11 +223,30 @@ with col1:
     )
 
 with col2:
+    # 1. Update Default if Cart Changed
     if raw_m_cost != st.session_state.last_cart_total:
         new_default = min(raw_m_cost, st.session_state.max_budget)
         st.session_state.marketer_cost_input = new_default
         st.session_state.last_cart_total = raw_m_cost
 
+    # 2. Logic to Enforce $75 Rule on the Input Box
+    # We calculate what the "Allowed" input is.
+    # Allowed Input = Raw Cost - 75.00 (Because Guest MUST pay at least 75)
+    max_allowed_marketer_pay = max(0.0, raw_m_cost - 75.0)
+    
+    # We also have the Budget Limit
+    final_limit = min(max_allowed_marketer_pay, st.session_state.max_budget)
+    
+    # Store original input for captioning purposes
+    original_input = st.session_state.marketer_cost_input
+    was_adjusted = False
+
+    # Check if current input violates the rule
+    if st.session_state.marketer_cost_input > final_limit:
+        st.session_state.marketer_cost_input = final_limit
+        was_adjusted = True
+
+    # 3. Render the Input Box (It will now display the adjusted value)
     marketer_pay_input = st.number_input(
         "Marketer Cost (You Pay)", 
         key="marketer_cost_input", 
@@ -237,19 +254,22 @@ with col2:
         help="Type the amount you want to pay. Guest pays the rest."
     )
     
+    # 4. Calculate Final Numbers for Display
     if raw_m_cost > 0:
         calculated_guest_pay = raw_m_cost - marketer_pay_input
         guest_pays = max(75.0, calculated_guest_pay)
+        # Recalculate effective just to be safe, though input is already capped
         effective_marketer_pay = raw_m_cost - guest_pays
     else:
         guest_pays = 0.0
         effective_marketer_pay = 0.0
 
-    if effective_marketer_pay < marketer_pay_input:
-        st.caption(f"🔒 Adjusted to **${effective_marketer_pay:,.2f}** (Guest Min $75)")
+    # 5. Display Adjustments
+    if was_adjusted and raw_m_cost > 0:
+         st.caption(f"🔒 Adjusted from **${original_input:,.2f}** (Guest Min $75)")
     
-    if effective_marketer_pay > st.session_state.max_budget:
-         st.caption(f"⚠️ Over Budget")
+    if effective_marketer_pay >= st.session_state.max_budget and raw_m_cost > 0:
+         st.caption(f"⚠️ Budget Limit Reached")
 
 with col3:
     st.metric("Guest Pays", f"${guest_pays:,.2f}")
