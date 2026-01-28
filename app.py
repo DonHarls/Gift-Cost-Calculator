@@ -154,7 +154,7 @@ DB = {
 # --- INITIALIZE SESSION STATE ---
 if 'cart' not in st.session_state:
     st.session_state.cart = []
-# UPDATED: Default Max Budget set to 150
+# Set Default Budget to 150.00
 if 'max_budget' not in st.session_state:
     st.session_state.max_budget = 150.00 
 if 'marketer_cost_input' not in st.session_state:
@@ -174,11 +174,8 @@ def add_to_cart_logic(item_name, variant_name, m_cost, r_cost, qty):
         "Total R": r_cost * qty
     })
 
-# --- CALLBACKS (The Secret Sauce to avoid Errors) ---
+# --- CALLBACKS ---
 def form_callback(item_name, variants):
-    """
-    Handles adding items to cart securely before redraw.
-    """
     any_added = False
     for variant in variants:
         key = f"input_{item_name}_{variant['name']}"
@@ -193,7 +190,7 @@ def form_callback(item_name, variants):
                 qty_int = int(val)
                 add_to_cart_logic(item_name, variant['name'], variant['m_cost'], variant['r_cost'], qty_int)
             
-            # Safe reset
+            # Reset input in callback
             st.session_state[key] = 0.0
             any_added = True
     
@@ -201,26 +198,18 @@ def form_callback(item_name, variants):
         st.session_state['success_msg'] = f"Added {item_name} to cart!"
 
 def clear_cart_callback():
-    """
-    Handles clearing the cart securely before redraw.
-    """
     st.session_state.cart = []
     st.session_state.marketer_cost_input = 0.0
     st.session_state.last_cart_total = 0.0
-    # Clear all input fields
     for key in list(st.session_state.keys()):
         if key.startswith("input_"):
             st.session_state[key] = 0.0
-    
     st.session_state['success_msg'] = "Cart cleared for new guest."
 
 def remove_item_callback(index):
-    """
-    Handles removing a single item securely.
-    """
     st.session_state.cart.pop(index)
 
-# --- TOP DASHBOARD (THE MONEY ZONE) ---
+# --- TOP DASHBOARD ---
 st.title("🎟️ PCB Gift Calculator")
 
 raw_m_cost = sum(item['Total M'] for item in st.session_state.cart)
@@ -277,7 +266,6 @@ st.divider()
 # --- MAIN SELECTION AREA ---
 st.header("Build Package")
 
-# Show Success Message if one exists from the callback
 if 'success_msg' in st.session_state and st.session_state['success_msg']:
     st.success(st.session_state['success_msg'])
     del st.session_state['success_msg']
@@ -289,7 +277,6 @@ selected_item = DB[category][item_name]
 if selected_item['notes']:
     st.info(f"ℹ️ **NOTE:** {selected_item['notes']}")
 
-# Use a Form
 with st.form("add_form", clear_on_submit=False):
     if item_name == "Restaurant Cards":
         st.caption("Enter the dollar amount you want to give.")
@@ -307,24 +294,15 @@ with st.form("add_form", clear_on_submit=False):
             else:
                 st.caption(f"M: ${variant['m_cost']} | R: ${variant['r_cost']}")
         with c3:
-            # Stable key based on item+variant
             stable_key = f"input_{item_name}_{variant['name']}"
-            
             if stable_key not in st.session_state:
                 st.session_state[stable_key] = 0.0
 
             if is_money_type:
-                st.number_input(
-                    "Amount ($)", min_value=0.0, step=0.01, 
-                    key=stable_key, label_visibility="collapsed"
-                )
+                st.number_input("Amount ($)", min_value=0.0, step=0.01, key=stable_key, label_visibility="collapsed")
             else:
-                st.number_input(
-                    "Qty", min_value=0.0, step=1.0, 
-                    key=stable_key, label_visibility="collapsed"
-                )
+                st.number_input("Qty", min_value=0.0, step=1.0, key=stable_key, label_visibility="collapsed")
 
-    # SUBMIT BUTTON WITH CALLBACK
     submitted = st.form_submit_button(
         "Add to Cart", 
         type="primary",
@@ -334,7 +312,7 @@ with st.form("add_form", clear_on_submit=False):
 
 st.divider()
 
-# --- BOTTOM SUMMARY (THE RECEIPT) ---
+# --- BOTTOM SUMMARY ---
 st.header("Current Package")
 
 if len(st.session_state.cart) > 0:
@@ -343,4 +321,22 @@ if len(st.session_state.cart) > 0:
         with col1:
             st.write(f"**{item['Item']}**")
             st.caption(f"{item['Variant']}")
-        with col
+        with col2:
+            st.write(f"Qty: {item['Qty']}")
+            st.write(f"${item['Total M']:.2f}")
+        with col3:
+            st.button("🗑️", key=f"remove_{i}", on_click=remove_item_callback, args=(i,))
+        st.divider()
+
+    st.markdown(f"""
+        <div style="background-color: #d4edda; padding: 20px; border-radius: 10px; text-align: center; border: 2px solid #28a745;">
+            <h2 style="color: #155724; margin:0;">Total Retail Value: ${total_r_cost:,.2f}</h2>
+            <p style="color: #155724; margin:0;">(Value to Guest)</p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.write("") 
+    st.button("Clear All / New Guest", type="secondary", on_click=clear_cart_callback)
+
+else:
+    st.info("Cart is empty. Select items above to start.")
